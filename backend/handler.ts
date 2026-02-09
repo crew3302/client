@@ -39,6 +39,11 @@ const authenticate = async (req: AuthRequest, res: Response, next: NextFunction)
   }
 };
 
+// Root route
+app.get('/', (_req, res) => {
+  res.json({ name: 'Pronote API', version: '1.0.0', status: 'running', docs: '/health' });
+});
+
 // Health check
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
