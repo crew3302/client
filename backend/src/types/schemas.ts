@@ -41,6 +41,7 @@ export const createNoteSchema = z.object({
   }).optional(),
   status: z.enum(['draft', 'completed', 'signed']).optional(),
   transcription: z.string().optional(),
+  processingTime: z.number().optional(),
 });
 
 export const updateNoteSchema = createNoteSchema.partial();
