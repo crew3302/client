@@ -1,4 +1,4 @@
-﻿import type { VercelRequest, VercelResponse } from '@vercel/node';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import { createClient } from '@supabase/supabase-js';
