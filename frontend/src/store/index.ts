@@ -49,6 +49,7 @@ function mapApiNote(apiNote: any): ClinicalNote {
 
 interface AuthState {
   user: User | null;
+  token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
@@ -110,6 +111,7 @@ export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       user: null,
+      token: null,
       isAuthenticated: false,
       isLoading: false,
       error: null,
@@ -122,6 +124,7 @@ export const useAuthStore = create<AuthState>()(
             const response = await authApi.login(email, password);
             set({ 
               user: mapApiUser(response.user), 
+              token: response.token,
               isAuthenticated: true, 
               isLoading: false 
             });
@@ -158,6 +161,7 @@ export const useAuthStore = create<AuthState>()(
             const response = await authApi.signup(email, password, name, specialty);
             set({ 
               user: mapApiUser(response.user), 
+              token: response.token,
               isAuthenticated: true, 
               isLoading: false 
             });
@@ -191,7 +195,7 @@ export const useAuthStore = create<AuthState>()(
           authApi.logout().catch(console.error);
         }
         setAuthToken(null);
-        set({ user: null, isAuthenticated: false });
+        set({ user: null, token: null, isAuthenticated: false });
         // Clear notes storage on logout
         localStorage.removeItem('notes-storage');
       },
@@ -214,9 +218,15 @@ export const useAuthStore = create<AuthState>()(
       },
       
       checkAuth: async () => {
+        // Restore token from persisted Zustand state into the API module
+        const { token: storedToken } = get();
+        if (storedToken) {
+          setAuthToken(storedToken);
+        }
+        
         const token = getAuthToken();
         if (!token) {
-          set({ user: null, isAuthenticated: false });
+          set({ user: null, token: null, isAuthenticated: false });
           return;
         }
         
@@ -226,7 +236,7 @@ export const useAuthStore = create<AuthState>()(
             set({ user: mapApiUser(user), isAuthenticated: true });
           } catch {
             setAuthToken(null);
-            set({ user: null, isAuthenticated: false });
+            set({ user: null, token: null, isAuthenticated: false });
           }
         }
       },
@@ -237,8 +247,17 @@ export const useAuthStore = create<AuthState>()(
       name: 'auth-storage',
       partialize: (state) => ({
         user: state.user,
+        token: state.token,
         isAuthenticated: state.isAuthenticated,
       }),
+      onRehydrate: (_state) => {
+        // After Zustand rehydrates from localStorage, sync the token to the API module
+        return (rehydratedState) => {
+          if (rehydratedState?.token) {
+            setAuthToken(rehydratedState.token);
+          }
+        };
+      },
     }
   )
 );
