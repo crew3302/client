@@ -34,6 +34,7 @@
     "@types/multer": "^1.4.12",
     "@types/node": "^22.7.4",
     "@types/uuid": "^10.0.0",
+    "@vercel/node": "^5.5.33",
     "tsx": "^4.19.1",
     "typescript": "^5.6.2"
   }
