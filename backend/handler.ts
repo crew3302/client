@@ -120,7 +120,7 @@ app.get('/api/auth/me', authenticate, async (req: AuthRequest, res) => {
   try {
     const { data: user, error } = await supabase
       .from('users')
-      .select('id, email, name, specialty, avatar, created_at')
+      .select('id, email, name, specialty, avatar_url, created_at')
       .eq('id', req.user!.id)
       .single();
     
