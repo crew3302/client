@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { 
@@ -15,14 +16,40 @@ import {
 import { Sidebar } from '../components/layout';
 import { Card, Button, Badge } from '../components/ui';
 import { useAuthStore, useNotesStore } from '../store';
-import { mockStats, mockRecentNotes } from '../data';
 import { format } from 'date-fns';
+import { dashboardApi, DashboardStats, Appointment } from '../services/api';
 
 export default function DashboardPage() {
   const { user } = useAuthStore();
-  const { notes } = useNotesStore();
+  const { notes, fetchNotes, isLoading } = useNotesStore();
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [statsLoading, setStatsLoading] = useState(true);
 
-  const displayNotes = notes.length > 0 ? notes.slice(0, 5) : mockRecentNotes;
+  // Fetch notes, stats, and appointments on mount
+  useEffect(() => {
+    fetchNotes();
+    
+    const fetchDashboardData = async () => {
+      try {
+        setStatsLoading(true);
+        const [statsData, appointmentsData] = await Promise.all([
+          dashboardApi.getStats(),
+          dashboardApi.getAppointments(),
+        ]);
+        setStats(statsData);
+        setAppointments(appointmentsData);
+      } catch (error) {
+        console.error('Failed to fetch dashboard data:', error);
+      } finally {
+        setStatsLoading(false);
+      }
+    };
+    
+    fetchDashboardData();
+  }, [fetchNotes]);
+
+  const recentNotes = notes.slice(0, 5);
 
   const quickActions = [
     { 
@@ -102,10 +129,10 @@ export default function DashboardPage() {
           className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8"
         >
           {[
-            { label: 'Total Notes', value: notes.length > 0 ? notes.length.toString() : mockStats.totalNotes.toLocaleString(), icon: <FileText size={20} />, color: 'text-emerald-600' },
-            { label: 'This Week', value: notes.filter(n => new Date(n.createdAt) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)).length.toString() || mockStats.notesThisWeek.toLocaleString(), icon: <Calendar size={20} />, color: 'text-blue-600' },
-            { label: 'Avg. Time', value: mockStats.averageTime, icon: <Clock size={20} />, color: 'text-purple-600' },
-            { label: 'Accuracy', value: mockStats.accuracy, icon: <TrendingUp size={20} />, color: 'text-amber-600' },
+            { label: 'Total Notes', value: statsLoading ? '...' : (stats?.totalNotes?.toString() || '0'), icon: <FileText size={20} />, color: 'text-emerald-600' },
+            { label: 'This Week', value: statsLoading ? '...' : (stats?.notesThisWeek?.toString() || '0'), icon: <Calendar size={20} />, color: 'text-blue-600' },
+            { label: 'Avg. Time', value: statsLoading ? '...' : (stats?.averageTime || 'N/A'), icon: <Clock size={20} />, color: 'text-purple-600' },
+            { label: 'Accuracy', value: statsLoading ? '...' : (stats?.accuracy || 'N/A'), icon: <TrendingUp size={20} />, color: 'text-amber-600' },
           ].map((stat, index) => (
             <motion.div key={index} variants={itemVariants}>
               <Card className="p-5">
@@ -154,22 +181,24 @@ export default function DashboardPage() {
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Upcoming Today</h2>
             <Card className="p-5">
               <div className="space-y-4">
-                {[
-                  { time: '9:00 AM', patient: 'John Smith', type: 'Follow-up' },
-                  { time: '10:30 AM', patient: 'Sarah Johnson', type: 'New Patient' },
-                  { time: '2:00 PM', patient: 'Michael Brown', type: 'Consultation' },
-                ].map((appointment, index) => (
-                  <div key={index} className="flex items-center gap-3 pb-3 border-b border-gray-100 last:border-0 last:pb-0">
-                    <div className="w-12 text-center">
-                      <p className="text-sm font-medium text-gray-900">{appointment.time.split(' ')[0]}</p>
-                      <p className="text-xs text-gray-500">{appointment.time.split(' ')[1]}</p>
+                {statsLoading ? (
+                  <p className="text-gray-500 text-center py-4">Loading appointments...</p>
+                ) : appointments.length === 0 ? (
+                  <p className="text-gray-500 text-center py-4">No appointments scheduled for today</p>
+                ) : (
+                  appointments.map((appointment, index) => (
+                    <div key={appointment.id || index} className="flex items-center gap-3 pb-3 border-b border-gray-100 last:border-0 last:pb-0">
+                      <div className="w-12 text-center">
+                        <p className="text-sm font-medium text-gray-900">{appointment.time.split(' ')[0]}</p>
+                        <p className="text-xs text-gray-500">{appointment.time.split(' ')[1]}</p>
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium text-gray-900">{appointment.patient}</p>
+                        <p className="text-sm text-gray-500">{appointment.type}</p>
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <p className="font-medium text-gray-900">{appointment.patient}</p>
-                      <p className="text-sm text-gray-500">{appointment.type}</p>
-                    </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
               <Button variant="ghost" className="w-full mt-4 text-emerald-600">
                 View All Appointments
@@ -204,7 +233,7 @@ export default function DashboardPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {displayNotes.map((note: any, index: number) => (
+                  {recentNotes.map((note: any, index: number) => (
                     <motion.tr
                       key={note.id || index}
                       initial={{ opacity: 0 }}

@@ -14,6 +14,7 @@ import { Sidebar } from '../components/layout';
 import { Card, Select } from '../components/ui';
 import { useRecordingStore, useNotesStore, useSettingsStore } from '../store';
 import { templates } from '../data';
+import { audioApi, notesApi } from '../services/api';
 import toast from 'react-hot-toast';
 import type { ClinicalNote } from '../types';
 
@@ -67,68 +68,64 @@ export default function CapturePage() {
     }
   };
 
-  const generateSOAPContent = (template: string, patientName: string, duration: number) => {
-    const durationMins = Math.floor(duration / 60);
-    const templates: Record<string, any> = {
-      soap: {
-        subjective: `Patient ${patientName} presents today for evaluation. Chief complaint discussed during the ${durationMins || 1}-minute consultation. Patient reports symptoms including discomfort and requests medical evaluation. History of present illness was documented from the recorded conversation. Patient denies any allergies to medications.`,
-        objective: `Vital Signs: BP within normal limits, HR regular, Temp afebrile, RR normal.\n\nGeneral: Patient appears well-developed and well-nourished, in no acute distress.\n\nPhysical Examination: Relevant systems examined based on chief complaint.\n\nReview of Systems: As documented in the conversation.`,
-        assessment: `1. Primary diagnosis based on clinical presentation and history.\n2. Differential diagnoses considered and evaluated.\n3. Clinical decision-making documented.`,
-        plan: `1. Treatment plan discussed with patient.\n2. Medications prescribed as indicated.\n3. Patient education provided regarding condition and treatment.\n4. Follow-up appointment recommended.\n5. Return precautions reviewed with patient.`,
-      },
-      psychiatry: {
-        chiefComplaint: `Patient ${patientName} presents for psychiatric evaluation.`,
-        historyOfPresentIllness: `Patient discussed current symptoms and concerns during the ${durationMins || 1}-minute session. Onset, duration, and severity of symptoms documented.`,
-        physicalExam: `Mental Status Exam:\n- Appearance: Appropriately dressed and groomed\n- Behavior: Cooperative, good eye contact\n- Speech: Normal rate and rhythm\n- Mood: As reported by patient\n- Affect: Congruent with mood\n- Thought Process: Linear and goal-directed\n- Thought Content: No SI/HI, no delusions\n- Cognition: Alert and oriented\n- Insight/Judgment: Fair to good`,
-        assessment: `Psychiatric assessment based on clinical interview and mental status examination.`,
-        plan: `1. Treatment recommendations discussed.\n2. Medication management as indicated.\n3. Therapy referral if appropriate.\n4. Safety planning reviewed.\n5. Follow-up scheduled.`,
-      },
-      therapy: {
-        subjective: `Therapy session with ${patientName}. Topics discussed during the ${durationMins || 1}-minute session included current stressors, coping mechanisms, and therapeutic goals.`,
-        objective: `Client presented with appropriate affect. Engaged actively in session. Demonstrated insight into presenting concerns.`,
-        assessment: `Progress toward therapeutic goals noted. Client showing improvement in identified areas. Barriers to progress addressed.`,
-        plan: `1. Continue current therapeutic approach.\n2. Homework/exercises assigned for next session.\n3. Next appointment scheduled.\n4. Crisis resources reviewed if needed.`,
-      },
-    };
-    
-    return templates[template] || templates.soap;
-  };
-
   const handleStopRecording = async () => {
     setIsProcessing(true);
     try {
       const audioBlob = await stopRecording();
       
       if (audioBlob) {
-        // Simulate AI processing with progress
-        toast.loading('Processing audio...', { id: 'processing' });
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        toast.loading('Transcribing conversation...', { id: 'processing' });
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        // Step 1: Upload the audio file
+        toast.loading('Uploading audio...', { id: 'processing' });
+        const audioFile = new File([audioBlob], `recording-${Date.now()}.webm`, { type: 'audio/webm' });
+        const uploadResult = await audioApi.upload(audioFile);
+        
+        // Step 2: Transcribe with OpenAI Whisper
+        toast.loading('Transcribing with AI...', { id: 'processing' });
+        const transcriptionResult = await audioApi.transcribe(uploadResult.id);
+        
+        // Step 3: Generate clinical note with GPT-4
         toast.loading('Generating clinical note...', { id: 'processing' });
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        const noteResult = await audioApi.generateNote(
+          transcriptionResult.transcription,
+          selectedTemplate,
+          patientName || undefined
+        );
+        
         toast.dismiss('processing');
         
-        const content = generateSOAPContent(selectedTemplate, patientName || 'Patient', session.duration);
-        
-        const newNote: ClinicalNote = {
-          id: Date.now().toString(),
-          userId: '1',
+        // Step 4: Create the note in the database
+        const createdNote = await notesApi.create({
           patientName: patientName || 'Unknown Patient',
-          dateOfService: new Date(),
+          dateOfService: new Date().toISOString().split('T')[0],
           template: selectedTemplate,
-          content,
-          status: 'draft',
-          createdAt: new Date(),
-          updatedAt: new Date(),
+          content: noteResult.content,
+          transcription: transcriptionResult.transcription,
+          audioUrl: uploadResult.url,
+        });
+        
+        // Also add to local store for immediate UI update
+        const newNote: ClinicalNote = {
+          id: createdNote.id,
+          userId: createdNote.userId,
+          patientName: createdNote.patientName,
+          dateOfService: new Date(createdNote.dateOfService),
+          template: createdNote.template,
+          content: createdNote.content,
+          status: createdNote.status,
+          transcription: createdNote.transcription,
+          audioUrl: createdNote.audioUrl,
+          createdAt: new Date(createdNote.createdAt),
+          updatedAt: new Date(createdNote.updatedAt),
         };
         
         addNote(newNote);
         toast.success('Note generated successfully!');
         navigate(`/notes/${newNote.id}`);
       }
-    } catch (error) {
-      toast.error('Failed to process recording');
+    } catch (error: any) {
+      console.error('Recording processing error:', error);
+      toast.dismiss('processing');
+      toast.error(error.message || 'Failed to process recording');
     } finally {
       setIsProcessing(false);
       resetRecording();

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -16,8 +16,9 @@ import { Sidebar } from '../components/layout';
 import { Card, Button, Select } from '../components/ui';
 import { useNotesStore, useSettingsStore } from '../store';
 import { templates } from '../data';
+import { audioApi, notesApi } from '../services/api';
 import toast from 'react-hot-toast';
-import type { ClinicalNote } from '../types';
+import type { ClinicalNote, NoteTemplate } from '../types';
 
 export default function DictationPage() {
   const navigate = useNavigate();
@@ -32,59 +33,149 @@ export default function DictationPage() {
   const [isMuted, setIsMuted] = useState(false);
   const [patientName, setPatientName] = useState('');
   
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => {
-    // Initialize speech recognition
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-      const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
-      recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = true;
-      recognitionRef.current.interimResults = true;
-      recognitionRef.current.lang = 'en-US';
-
-      recognitionRef.current.onresult = (event: any) => {
-        let interim = '';
-        let final = '';
-        
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const result = event.results[i];
-          if (result.isFinal) {
-            final += result[0].transcript + ' ';
-          } else {
-            interim += result[0].transcript;
-          }
-        }
-        
-        if (final) {
-          setTranscript(prev => prev + final);
-        }
-        setInterimTranscript(interim);
-      };
-
-      recognitionRef.current.onerror = (event: any) => {
-        console.error('Speech recognition error:', event.error);
-        if (event.error !== 'no-speech') {
-          toast.error('Speech recognition error. Please try again.');
-        }
-        setIsListening(false);
-      };
-
-      recognitionRef.current.onend = () => {
-        if (isListening) {
-          // Restart if still supposed to be listening
-          recognitionRef.current?.start();
-        }
-      };
+  // Process voice commands and punctuation
+  const processVoiceCommands = useCallback((text: string): { processed: string; command: string | null } => {
+    const lowerText = text.toLowerCase().trim();
+    
+    // Voice commands
+    if (lowerText === 'delete last' || lowerText === 'delete that') {
+      return { processed: '', command: 'delete_last' };
     }
+    if (lowerText === 'clear all' || lowerText === 'clear everything') {
+      return { processed: '', command: 'clear_all' };
+    }
+    if (lowerText === 'new section' || lowerText === 'next section') {
+      return { processed: '\n\n---\n\n', command: null };
+    }
+    if (lowerText === 'new line' || lowerText === 'next line') {
+      return { processed: '\n', command: null };
+    }
+    if (lowerText === 'new paragraph' || lowerText === 'next paragraph') {
+      return { processed: '\n\n', command: null };
+    }
+    
+    // Process punctuation commands in the text
+    let processed = text
+      .replace(/\bperiod\b/gi, '.')
+      .replace(/\bcomma\b/gi, ',')
+      .replace(/\bquestion mark\b/gi, '?')
+      .replace(/\bexclamation mark\b/gi, '!')
+      .replace(/\bexclamation point\b/gi, '!')
+      .replace(/\bcolon\b/gi, ':')
+      .replace(/\bsemicolon\b/gi, ';')
+      .replace(/\bdash\b/gi, '-')
+      .replace(/\bhyphen\b/gi, '-')
+      .replace(/\bopen parenthesis\b/gi, '(')
+      .replace(/\bclose parenthesis\b/gi, ')')
+      .replace(/\bopen quote\b/gi, '"')
+      .replace(/\bclose quote\b/gi, '"')
+      .replace(/\bquote\b/gi, '"');
+    
+    return { processed, command: null };
+  }, []);
+
+  // Handle delete last word
+  const deleteLastWord = useCallback(() => {
+    setTranscript(prev => {
+      const words = prev.trim().split(/\s+/);
+      if (words.length > 0) {
+        words.pop();
+        return words.join(' ') + (words.length > 0 ? ' ' : '');
+      }
+      return prev;
+    });
+    if (!isMuted) toast.success('Deleted last word');
+  }, [isMuted]);
+
+  useEffect(() => {
+    // Check for speech recognition support
+    const SpeechRecognitionAPI = (window as typeof window & { 
+      webkitSpeechRecognition?: typeof SpeechRecognition;
+      SpeechRecognition?: typeof SpeechRecognition;
+    }).webkitSpeechRecognition || (window as typeof window & { 
+      SpeechRecognition?: typeof SpeechRecognition;
+    }).SpeechRecognition;
+
+    if (!SpeechRecognitionAPI) {
+      return;
+    }
+
+    const recognition = new SpeechRecognitionAPI();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+    recognition.maxAlternatives = 1;
+
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      let interim = '';
+      let finalText = '';
+      
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        const transcriptText = result[0].transcript;
+        
+        if (result.isFinal) {
+          const { processed, command } = processVoiceCommands(transcriptText);
+          
+          if (command === 'delete_last') {
+            deleteLastWord();
+          } else if (command === 'clear_all') {
+            setTranscript('');
+            setInterimTranscript('');
+            if (!isMuted) toast.success('Transcript cleared');
+          } else {
+            finalText += processed;
+          }
+        } else {
+          interim += transcriptText;
+        }
+      }
+      
+      if (finalText) {
+        setTranscript(prev => prev + finalText);
+      }
+      setInterimTranscript(interim);
+    };
+
+    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+      console.error('Speech recognition error:', event.error);
+      if (event.error === 'not-allowed') {
+        toast.error('Microphone access denied. Please allow microphone access in your browser settings.');
+        setIsListening(false);
+      } else if (event.error === 'no-speech') {
+        // Silently handle no-speech, just restart
+      } else if (event.error === 'network') {
+        toast.error('Network error. Please check your internet connection.');
+        setIsListening(false);
+      } else if (event.error !== 'aborted') {
+        toast.error('Speech recognition error. Please try again.');
+        setIsListening(false);
+      }
+    };
+
+    recognition.onend = () => {
+      // Only restart if still supposed to be listening
+      if (isListening && recognitionRef.current) {
+        try {
+          recognitionRef.current.start();
+        } catch (e) {
+          // Ignore if already started
+        }
+      }
+    };
+
+    recognitionRef.current = recognition;
 
     return () => {
       if (recognitionRef.current) {
         recognitionRef.current.stop();
+        recognitionRef.current = null;
       }
     };
-  }, [isListening]);
+  }, [isListening, isMuted, processVoiceCommands, deleteLastWord]);
 
   const toggleListening = () => {
     if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
@@ -121,37 +212,6 @@ export default function DictationPage() {
     }
   };
 
-  const generateNoteFromTranscript = (text: string, template: string, name: string) => {
-    const sentences = text.split(/[.!?]+/).filter(s => s.trim());
-    const third = Math.ceil(sentences.length / 3);
-    
-    const templates: Record<string, any> = {
-      soap: {
-        subjective: sentences.length > 0 
-          ? `Patient ${name} presents with the following concerns:\n\n${sentences.slice(0, third).join('. ').trim() || text}.\n\nAs documented from dictation.`
-          : `Patient ${name} presents for evaluation. Chief complaint and history documented from dictation.`,
-        objective: `Vital Signs: Documented during visit.\n\nPhysical Examination:\n${sentences.slice(third, third * 2).join('. ').trim() || 'Examination findings documented as dictated.'}.\n\nGeneral appearance noted.`,
-        assessment: `Clinical Assessment:\n\n${sentences.slice(third * 2).join('. ').trim() || 'Assessment based on clinical findings and patient history as dictated.'}.`,
-        plan: `Treatment Plan:\n1. Continue current management as indicated.\n2. Medications reviewed and adjusted as needed.\n3. Patient education provided.\n4. Follow-up as clinically indicated.\n5. Return precautions discussed.`,
-      },
-      psychiatry: {
-        chiefComplaint: `Patient ${name} presents for psychiatric evaluation.`,
-        historyOfPresentIllness: sentences.slice(0, third).join('. ').trim() || text,
-        physicalExam: `Mental Status Examination:\n- Appearance: ${sentences.slice(third, third * 2).join('. ').trim() || 'As documented'}\n- Behavior: Cooperative\n- Mood/Affect: As reported\n- Thought Process: Goal-directed\n- Cognition: Intact`,
-        assessment: sentences.slice(third * 2).join('. ').trim() || 'Psychiatric assessment documented.',
-        plan: `1. Treatment recommendations as discussed.\n2. Medication management continued.\n3. Follow-up scheduled.`,
-      },
-      therapy: {
-        subjective: `Therapy session with ${name}. Topics discussed:\n\n${sentences.slice(0, third).join('. ').trim() || text}`,
-        objective: `Client presentation: ${sentences.slice(third, third * 2).join('. ').trim() || 'Engaged appropriately in session.'}`,
-        assessment: sentences.slice(third * 2).join('. ').trim() || 'Progress toward therapeutic goals noted.',
-        plan: `1. Continue therapeutic interventions.\n2. Homework assigned.\n3. Next session scheduled.`,
-      },
-    };
-    
-    return templates[template] || templates.soap;
-  };
-
   const handleGenerateNote = async () => {
     if (!transcript.trim()) {
       toast.error('Please dictate some content first');
@@ -161,33 +221,47 @@ export default function DictationPage() {
     setIsProcessing(true);
     
     try {
-      // Simulate AI processing with feedback
-      toast.loading('Analyzing dictation...', { id: 'dictation-process' });
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      toast.loading('Structuring clinical note...', { id: 'dictation-process' });
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Generate clinical note using real AI
+      toast.loading('Generating clinical note with AI...', { id: 'dictation-process' });
+      
+      const noteResult = await audioApi.generateNote(
+        transcript,
+        selectedTemplate,
+        patientName || undefined
+      );
+      
       toast.dismiss('dictation-process');
       
-      const content = generateNoteFromTranscript(transcript, selectedTemplate, patientName || 'Patient');
-      
-      const newNote: ClinicalNote = {
-        id: Date.now().toString(),
-        userId: '1',
+      // Create the note in the database
+      const createdNote = await notesApi.create({
         patientName: patientName || 'Unknown Patient',
-        dateOfService: new Date(),
+        dateOfService: new Date().toISOString().split('T')[0],
         template: selectedTemplate,
-        content,
+        content: noteResult.content,
         transcription: transcript,
-        status: 'draft',
-        createdAt: new Date(),
-        updatedAt: new Date(),
+      });
+      
+      // Also add to local store for immediate UI update
+      const newNote: ClinicalNote = {
+        id: createdNote.id,
+        userId: createdNote.userId,
+        patientName: createdNote.patientName,
+        dateOfService: new Date(createdNote.dateOfService),
+        template: createdNote.template,
+        content: createdNote.content,
+        transcription: createdNote.transcription,
+        status: createdNote.status,
+        createdAt: new Date(createdNote.createdAt),
+        updatedAt: new Date(createdNote.updatedAt),
       };
       
       addNote(newNote);
       toast.success('Note generated successfully!');
       navigate(`/notes/${newNote.id}`);
-    } catch (error) {
-      toast.error('Failed to generate note');
+    } catch (error: any) {
+      console.error('Dictation processing error:', error);
+      toast.dismiss('dictation-process');
+      toast.error(error.message || 'Failed to generate note');
     } finally {
       setIsProcessing(false);
     }
@@ -389,7 +463,7 @@ export default function DictationPage() {
                     </label>
                     <Select
                       value={selectedTemplate}
-                      onChange={(e) => setTemplate(e.target.value as any)}
+                      onChange={(e) => setTemplate(e.target.value as NoteTemplate)}
                       options={templates.map(t => ({ value: t.id, label: t.name }))}
                     />
                   </div>

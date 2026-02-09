@@ -13,6 +13,7 @@ import { Sidebar } from '../components/layout';
 import { Card, Button, Select, Input } from '../components/ui';
 import { useNotesStore, useSettingsStore } from '../store';
 import { templates } from '../data';
+import { audioApi, notesApi } from '../services/api';
 import toast from 'react-hot-toast';
 import type { ClinicalNote } from '../types';
 
@@ -70,32 +71,6 @@ export default function UploadPage() {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
-  const generateUploadedAudioNote = (template: string, name: string, fileName: string) => {
-    const templates: Record<string, any> = {
-      soap: {
-        subjective: `Patient ${name} audio recording (${fileName}) transcribed.\n\nChief Complaint: Patient presents with concerns as documented in the audio consultation.\n\nHistory of Present Illness: Detailed history captured from the recorded patient encounter. Onset, duration, severity, and associated symptoms documented.\n\nPast Medical History: As discussed during visit.\n\nMedications: Current medications reviewed.`,
-        objective: `Vital Signs:\n- Blood Pressure: Within normal limits\n- Heart Rate: Regular\n- Temperature: Afebrile\n- Respiratory Rate: Normal\n\nPhysical Examination:\nGeneral: Patient appears comfortable, in no acute distress.\n\nRelevant systems examined as per clinical indication. Findings documented from audio discussion.`,
-        assessment: `Clinical Assessment:\n\n1. Primary diagnosis based on history and examination findings.\n2. Differential diagnoses considered.\n3. Risk factors and clinical considerations documented.\n\nClinical decision-making supported by evidence from the recorded encounter.`,
-        plan: `Treatment Plan:\n\n1. Diagnostic workup as indicated.\n2. Medication management - prescriptions as discussed.\n3. Non-pharmacological interventions recommended.\n4. Patient education provided regarding condition and treatment.\n5. Follow-up appointment scheduled.\n6. Return precautions reviewed - patient instructed to seek immediate care if symptoms worsen.`,
-      },
-      psychiatry: {
-        chiefComplaint: `Patient ${name} presents for psychiatric evaluation (audio: ${fileName}).`,
-        historyOfPresentIllness: `Psychiatric history documented from audio transcription. Patient discusses current symptoms, onset, and functional impact. Previous psychiatric treatment and response reviewed.`,
-        physicalExam: `Mental Status Examination:\n\n- Appearance: Appropriately dressed and groomed\n- Behavior: Cooperative, appropriate eye contact\n- Speech: Normal rate, rhythm, and volume\n- Mood: As reported by patient\n- Affect: Mood-congruent\n- Thought Process: Linear, logical, goal-directed\n- Thought Content: No suicidal or homicidal ideation reported\n- Perceptions: No hallucinations reported\n- Cognition: Alert and oriented\n- Insight: Fair\n- Judgment: Intact`,
-        assessment: `Psychiatric Assessment:\n\n1. Primary psychiatric diagnosis based on clinical interview.\n2. Severity and functional impact documented.\n3. Safety assessment completed.`,
-        plan: `1. Pharmacotherapy - medications as discussed.\n2. Psychotherapy referral/continuation.\n3. Safety plan reviewed if indicated.\n4. Follow-up appointment scheduled.\n5. Crisis resources provided.`,
-      },
-      therapy: {
-        subjective: `Therapy session with ${name} recorded (${fileName}).\n\nSession Focus: Topics and concerns discussed during the therapeutic encounter.\n\nClient's Reported Symptoms: Current stressors, mood, and coping as described.\n\nTherapeutic Goals Progress: Patient's perspective on progress toward established goals.`,
-        objective: `Session Observations:\n\n- Presentation: Client's appearance and demeanor during session.\n- Engagement: Level of participation in therapeutic process.\n- Affect: Emotional presentation throughout session.\n- Therapeutic Alliance: Quality of working relationship.`,
-        assessment: `Clinical Formulation:\n\nProgress toward treatment goals assessed. Client demonstrates ongoing engagement with therapeutic process. Barriers to progress identified and addressed.`,
-        plan: `1. Continue current therapeutic approach.\n2. Skills and interventions to practice between sessions.\n3. Homework/exercises assigned.\n4. Next session focus areas identified.\n5. Follow-up appointment scheduled.`,
-      },
-    };
-    
-    return templates[template] || templates.soap;
-  };
-
   const handleProcess = async () => {
     if (!file) return;
     
@@ -103,47 +78,60 @@ export default function UploadPage() {
     setProgress(0);
     
     try {
-      // Simulate upload progress
+      // Step 1: Upload the audio file
       toast.loading('Uploading audio file...', { id: 'upload-process' });
-      for (let i = 0; i <= 30; i += 10) {
-        await new Promise(resolve => setTimeout(resolve, 300));
-        setProgress(i);
-      }
+      setProgress(20);
+      const uploadResult = await audioApi.upload(file);
       
-      // Simulate transcription
-      toast.loading('Transcribing audio...', { id: 'upload-process' });
-      for (let i = 30; i <= 60; i += 10) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-        setProgress(i);
-      }
+      // Step 2: Transcribe with OpenAI Whisper
+      toast.loading('Transcribing with AI...', { id: 'upload-process' });
+      setProgress(50);
+      const transcriptionResult = await audioApi.transcribe(uploadResult.id);
       
-      // Simulate note generation
+      // Step 3: Generate clinical note with GPT-4
       toast.loading('Generating clinical note...', { id: 'upload-process' });
-      for (let i = 60; i <= 100; i += 10) {
-        await new Promise(resolve => setTimeout(resolve, 400));
-        setProgress(i);
-      }
+      setProgress(80);
+      const noteResult = await audioApi.generateNote(
+        transcriptionResult.transcription,
+        selectedTemplate,
+        patientName || undefined
+      );
+      
+      setProgress(100);
       toast.dismiss('upload-process');
       
-      const content = generateUploadedAudioNote(selectedTemplate, patientName || 'Patient', file.name);
-      
-      const newNote: ClinicalNote = {
-        id: Date.now().toString(),
-        userId: '1',
+      // Step 4: Create the note in the database
+      const createdNote = await notesApi.create({
         patientName: patientName || 'Unknown Patient',
-        dateOfService: new Date(),
+        dateOfService: new Date().toISOString().split('T')[0],
         template: selectedTemplate,
-        content,
-        status: 'draft',
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        content: noteResult.content,
+        transcription: transcriptionResult.transcription,
+        audioUrl: uploadResult.url,
+      });
+      
+      // Also add to local store for immediate UI update
+      const newNote: ClinicalNote = {
+        id: createdNote.id,
+        userId: createdNote.userId,
+        patientName: createdNote.patientName,
+        dateOfService: new Date(createdNote.dateOfService),
+        template: createdNote.template,
+        content: createdNote.content,
+        transcription: createdNote.transcription,
+        audioUrl: createdNote.audioUrl,
+        status: createdNote.status,
+        createdAt: new Date(createdNote.createdAt),
+        updatedAt: new Date(createdNote.updatedAt),
       };
       
       addNote(newNote);
       toast.success('Audio processed successfully!');
       navigate(`/notes/${newNote.id}`);
-    } catch (error) {
-      toast.error('Failed to process audio file');
+    } catch (error: any) {
+      console.error('Upload processing error:', error);
+      toast.dismiss('upload-process');
+      toast.error(error.message || 'Failed to process audio file');
     } finally {
       setIsProcessing(false);
       setProgress(0);
