@@ -142,7 +142,9 @@ app.post('/api/auth/change-password', authenticate, async (req: AuthRequest, res
     if (!valid) return res.status(401).json({ error: 'Current password is incorrect' });
 
     const newHash = await bcrypt.hash(newPassword, 12);
-    await supabase.from('users').update({ password_hash: newHash }).eq('id', req.user!.id);
+    const { error: pwError } = await supabase.from('users')
+      .update({ password_hash: newHash }).eq('id', req.user!.id).select();
+    if (pwError) throw pwError;
     res.json({ message: 'Password changed successfully' });
   } catch (error: any) {
     res.status(500).json({ error: error.message || JSON.stringify(error) });
@@ -509,7 +511,9 @@ app.put('/api/notes/:id', authenticate, async (req: AuthRequest, res) => {
     if (data.transcription !== undefined) noteUpdate.transcription = data.transcription;
 
     if (Object.keys(noteUpdate).length > 0) {
-      await supabase.from('clinical_notes').update(noteUpdate).eq('id', id);
+      const { error: updateError } = await supabase.from('clinical_notes')
+        .update(noteUpdate).eq('id', id).eq('user_id', req.user!.id).select();
+      if (updateError) throw updateError;
     }
 
     if (data.content) {
@@ -527,20 +531,38 @@ app.put('/api/notes/:id', authenticate, async (req: AuthRequest, res) => {
       if (data.content.followUp !== undefined) cu.follow_up = data.content.followUp;
       if (data.content.customSections !== undefined) cu.custom_sections = data.content.customSections;
 
-      try { await supabase.from('note_contents')
-        .upsert({ note_id: id, ...cu }, { onConflict: 'note_id' }); } catch {}
+      const { error: contentError } = await supabase.from('note_contents')
+        .upsert({ note_id: id, ...cu }, { onConflict: 'note_id' }).select();
+      if (contentError) throw contentError;
     }
 
+    // Fetch the updated note with content
     const { data: updated, error } = await supabase
       .from('clinical_notes').select('*').eq('id', id).single();
     if (error) throw error;
+
+    // Also fetch updated content from note_contents
+    const { data: noteContent } = await supabase
+      .from('note_contents').select('*').eq('note_id', id).single();
+
+    const content = noteContent ? {
+      subjective: noteContent.subjective, objective: noteContent.objective,
+      assessment: noteContent.assessment, plan: noteContent.plan,
+      chiefComplaint: noteContent.chief_complaint,
+      historyOfPresentIllness: noteContent.history_of_present_illness,
+      reviewOfSystems: noteContent.review_of_systems,
+      physicalExam: noteContent.physical_exam,
+      medicalDecisionMaking: noteContent.medical_decision_making,
+      instructions: noteContent.instructions, followUp: noteContent.follow_up,
+      customSections: noteContent.custom_sections,
+    } : (data.content || {});
 
     res.json({
       id: updated.id, userId: updated.user_id,
       patientName: updated.patient_name, patientId: updated.patient_id,
       dateOfService: updated.date_of_service, template: updated.template,
       status: updated.status, audioUrl: updated.audio_url,
-      transcription: updated.transcription, content: data.content || {},
+      transcription: updated.transcription, content,
       createdAt: updated.created_at, updatedAt: updated.updated_at,
     });
   } catch (error: any) {
@@ -616,7 +638,16 @@ app.get('/api/templates', authenticate, async (req: AuthRequest, res) => {
       return res.json(defaultTemplates);
     }
 
-    res.json((templates || []).map(t => ({
+    // Deduplicate by template_type (prefer user templates over defaults)
+    const seen = new Set<string>();
+    const deduped = (templates || []).filter(t => {
+      const key = t.template_type || t.id;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    res.json(deduped.map(t => ({
       id: t.template_type, dbId: t.id, name: t.name,
       description: t.description, sections: t.sections,
       specialty: t.specialty, isDefault: t.is_default,
