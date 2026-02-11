@@ -4,23 +4,23 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 
-import authRoutes from '../src/routes/auth';
-import usersRoutes from '../src/routes/users';
-import notesRoutes from '../src/routes/notes';
-import templatesRoutes from '../src/routes/templates';
-import audioRoutes from '../src/routes/audio';
-import subscriptionRoutes from '../src/routes/subscriptions';
-import adminRoutes from '../src/routes/admin';
-import webhookRoutes from '../src/routes/webhooks';
-import dashboardRoutes from '../src/routes/dashboard';
-import { errorHandler } from '../src/middleware/errorHandler';
+import authRoutes from '../src/routes/auth.js';
+import usersRoutes from '../src/routes/users.js';
+import notesRoutes from '../src/routes/notes.js';
+import templatesRoutes from '../src/routes/templates.js';
+import audioRoutes from '../src/routes/audio.js';
+import subscriptionRoutes from '../src/routes/subscriptions.js';
+import adminRoutes from '../src/routes/admin.js';
+import webhookRoutes from '../src/routes/webhooks.js';
+import dashboardRoutes from '../src/routes/dashboard.js';
+import { errorHandler } from '../src/middleware/errorHandler.js';
 
 const app = express();
 
 // Security middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.FRONTEND_URL || '*',
+  origin: true,
   credentials: true,
 }));
 
