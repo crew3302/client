@@ -6,7 +6,7 @@ export interface User {
   role: 'clinician' | 'admin';
   specialty: string;
   subscriptionStatus: 'active' | 'inactive' | 'trial';
-  subscriptionPlan: 'starter' | 'practice' | 'enterprise' | null;
+  subscriptionPlan: 'individual_annual' | 'group_monthly' | 'group_annual' | null;
   trialEndsAt: Date | null;
   createdAt: Date;
   avatar?: string;
@@ -74,7 +74,7 @@ export interface RecordingSession {
 export interface Subscription {
   id: string;
   userId: string;
-  plan: 'starter' | 'practice' | 'enterprise';
+  plan: 'individual_annual' | 'group_monthly' | 'group_annual';
   status: 'active' | 'inactive' | 'canceled' | 'past_due';
   currentPeriodStart: Date;
   currentPeriodEnd: Date;

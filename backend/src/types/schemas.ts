@@ -67,7 +67,7 @@ export const updateSettingsSchema = z.object({
 
 // Subscription schema
 export const createCheckoutSchema = z.object({
-  plan: z.enum(['starter', 'practice', 'enterprise']),
+  plan: z.enum(['individual_annual', 'group_monthly', 'group_annual']),
   successUrl: z.string().url(),
   cancelUrl: z.string().url(),
 });

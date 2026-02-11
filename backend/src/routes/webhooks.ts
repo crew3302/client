@@ -219,16 +219,13 @@ async function handlePaymentSucceeded(invoice: Stripe.Invoice) {
   console.log(`Payment succeeded for user ${user.id}`);
 }
 
-function getPlanFromPriceId(priceId: string): 'starter' | 'practice' | 'enterprise' {
-  const starterPriceId = process.env.STRIPE_STARTER_PRICE_ID;
-  const practicePriceId = process.env.STRIPE_PRACTICE_PRICE_ID;
-  const enterprisePriceId = process.env.STRIPE_ENTERPRISE_PRICE_ID;
-
-  if (priceId === starterPriceId) return 'starter';
-  if (priceId === practicePriceId) return 'practice';
-  if (priceId === enterprisePriceId) return 'enterprise';
-  
-  return 'practice'; // Default fallback
+function getPlanFromPriceId(priceId: string): string {
+  const priceMap: Record<string, string> = {
+    'price_1SzS7dDXB0wGVl1wDrTojxoO': 'individual_annual',
+    'price_1SzSDSDXB0wGVl1wjWa5py0A': 'group_monthly',
+    'price_1SzSG6DXB0wGVl1wMoEzFUnm': 'group_annual',
+  };
+  return priceMap[priceId] || 'individual_annual';
 }
 
 // ==================== PayPal Webhooks ====================

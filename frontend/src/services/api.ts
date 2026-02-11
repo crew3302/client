@@ -418,7 +418,7 @@ export interface User {
   role: 'clinician' | 'admin';
   specialty: string;
   subscriptionStatus: 'active' | 'inactive' | 'trial';
-  subscriptionPlan: 'starter' | 'practice' | 'enterprise' | null;
+  subscriptionPlan: 'individual_annual' | 'group_monthly' | 'group_annual' | null;
   trialEndsAt: string | null;
   createdAt: string;
   avatar?: string;

@@ -26,11 +26,11 @@ interface User {
 }
 
 const mockUsers: User[] = [
-  { id: '1', name: 'Dr. Sarah Johnson', email: 'sarah@example.com', role: 'clinician', status: 'active', plan: 'practice', notesCount: 234, joinedAt: new Date('2024-01-15') },
-  { id: '2', name: 'Dr. Michael Chen', email: 'michael@example.com', role: 'clinician', status: 'active', plan: 'starter', notesCount: 156, joinedAt: new Date('2024-02-20') },
-  { id: '3', name: 'Dr. Emily Davis', email: 'emily@example.com', role: 'clinician', status: 'inactive', plan: 'practice', notesCount: 89, joinedAt: new Date('2024-03-10') },
-  { id: '4', name: 'Dr. James Wilson', email: 'james@example.com', role: 'clinician', status: 'suspended', plan: 'starter', notesCount: 12, joinedAt: new Date('2024-06-01') },
-  { id: '5', name: 'Admin User', email: 'admin@example.com', role: 'admin', status: 'active', plan: 'enterprise', notesCount: 0, joinedAt: new Date('2024-01-01') },
+  { id: '1', name: 'Dr. Sarah Johnson', email: 'sarah@example.com', role: 'clinician', status: 'active', plan: 'group_monthly', notesCount: 234, joinedAt: new Date('2024-01-15') },
+  { id: '2', name: 'Dr. Michael Chen', email: 'michael@example.com', role: 'clinician', status: 'active', plan: 'individual_annual', notesCount: 156, joinedAt: new Date('2024-02-20') },
+  { id: '3', name: 'Dr. Emily Davis', email: 'emily@example.com', role: 'clinician', status: 'inactive', plan: 'group_monthly', notesCount: 89, joinedAt: new Date('2024-03-10') },
+  { id: '4', name: 'Dr. James Wilson', email: 'james@example.com', role: 'clinician', status: 'suspended', plan: 'individual_annual', notesCount: 12, joinedAt: new Date('2024-06-01') },
+  { id: '5', name: 'Admin User', email: 'admin@example.com', role: 'admin', status: 'active', plan: 'group_annual', notesCount: 0, joinedAt: new Date('2024-01-01') },
 ];
 
 export default function AdminPage() {
@@ -261,9 +261,9 @@ export default function AdminPage() {
               <div>
                 <label htmlFor="user-plan" className="block text-sm font-medium text-gray-700 mb-1.5">Plan</label>
                 <select id="user-plan" className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent">
-                  <option value="starter">Starter</option>
-                  <option value="practice">Practice</option>
-                  <option value="enterprise">Enterprise</option>
+                  <option value="individual_annual">Individual Annual</option>
+                  <option value="group_monthly">Group Monthly</option>
+                  <option value="group_annual">Group Annual</option>
                 </select>
               </div>
             </div>

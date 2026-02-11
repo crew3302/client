@@ -138,12 +138,6 @@ export default function SettingsPage() {
   };
 
   const handleUpgrade = async (planId: string) => {
-    if (planId === 'enterprise') {
-      toast.success('Our team will contact you shortly!');
-      setShowUpgradeModal(false);
-      return;
-    }
-
     setIsUpgrading(true);
     try {
       const response = await subscriptionsApi.createCheckout(
@@ -474,8 +468,11 @@ export default function SettingsPage() {
                   <h4 className="font-semibold text-gray-900 text-lg">{plan.name}</h4>
                   <p className="text-3xl font-bold text-gray-900 mt-2">
                     {plan.price ? `$${plan.price}` : 'Custom'}
-                    {plan.price && <span className="text-sm font-normal text-gray-500">/mo</span>}
+                    {plan.price && <span className="text-sm font-normal text-gray-500">/{plan.period}</span>}
                   </p>
+                  {plan.pricePerMonth && plan.period === 'year' && (
+                    <p className="text-sm text-emerald-600 font-medium">${plan.pricePerMonth.toFixed(2)}/mo</p>
+                  )}
                   <p className="text-sm text-gray-500 mt-1">{plan.description}</p>
                 </div>
                 <ul className="space-y-2 mt-4 flex-1">

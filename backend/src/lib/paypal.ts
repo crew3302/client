@@ -16,9 +16,9 @@ export const paypalEnabled = !!(PAYPAL_CLIENT_ID && PAYPAL_CLIENT_SECRET);
 
 // PayPal Plan IDs (create these in PayPal Dashboard)
 export const PAYPAL_PLANS = {
-  starter: process.env.PAYPAL_STARTER_PLAN_ID || 'P-starter-plan-id',
-  practice: process.env.PAYPAL_PRACTICE_PLAN_ID || 'P-practice-plan-id',
-  enterprise: process.env.PAYPAL_ENTERPRISE_PLAN_ID || 'P-enterprise-plan-id',
+  individual_annual: process.env.PAYPAL_INDIVIDUAL_ANNUAL_PLAN_ID || 'P-individual-annual-plan-id',
+  group_monthly: process.env.PAYPAL_GROUP_MONTHLY_PLAN_ID || 'P-group-monthly-plan-id',
+  group_annual: process.env.PAYPAL_GROUP_ANNUAL_PLAN_ID || 'P-group-annual-plan-id',
 };
 
 // Get PayPal access token
